@@ -1,0 +1,193 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MIDI Pedal Commander v0.5</title>
+  <style>
+    body {
+      background: #f8f5f2;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 2rem;
+      color: #333;
+    }
+    h1 {
+      font-size: 1.6em;
+      margin-bottom: 1em;
+    }
+    .section {
+      margin-bottom: 2em;
+    }
+    select, input[type="range"], button {
+      padding: 0.5em;
+      margin: 0.25em auto;
+      font-size: 1em;
+      border-radius: 0.6em;
+      border: 1px solid #ccc;
+      width: 90%;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1em;
+      margin-top: 1em;
+    }
+    .pad-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3em;
+    }
+    .pad-btn {
+      padding: 1.2em;
+      border: none;
+      border-radius: 1.2em;
+      font-weight: bold;
+      background: #e9dad2;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      width: 100%;
+    }
+    .pad-btn:hover {
+      background: #dfcec6;
+    }
+    .log {
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 1em;
+      height: 150px;
+      overflow-y: scroll;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <h1>MIDI Pedal Commander v0.5</h1>
+
+  <div class="section">
+    <label for="midiOut">MIDI Output:</label>
+    <select id="midiOut"></select>
+  </div>
+
+  <div class="section grid">
+    <div class="pad-block">
+      <button class="pad-btn" onclick="sendPCAndSync(1)">Recall 1</button>
+    </div>
+    <div class="pad-block">
+      <button class="pad-btn" onclick="sendPCAndSync(2)">Recall 2</button>
+    </div>
+    <div class="pad-block">
+      <button class="pad-btn" onclick="sendPCAndSync(document.getElementById('recallSelect').value)">Recall ▼</button>
+      <select id="recallSelect" onchange="syncSaveDropdown()"></select>
+    </div>
+    <div class="pad-block">
+      <button class="pad-btn" onclick="sendLive()">Live Mode</button>
+    </div>
+    <div class="pad-block">
+      <button class="pad-btn" onclick="sendCC(102,127)">CH1 ON</button>
+      <button class="pad-btn" onclick="sendCC(102,0)">CH1 OFF</button>
+    </div>
+    <div class="pad-block">
+      <button class="pad-btn" onclick="sendCC(103,127)">CH2 ON</button>
+      <button class="pad-btn" onclick="sendCC(103,0)">CH2 OFF</button>
+    </div>
+    <div class="pad-block">
+      <button class="pad-btn" onclick="sendGain(14)">Send Gain 2</button>
+      <input type="range" id="gain2" min="0" max="127" value="64" />
+    </div>
+    <div class="pad-block">
+      <button class="pad-btn" onclick="savePreset()">Save Preset</button>
+      <select id="saveSelect"></select>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Log</h3>
+    <div id="log" class="log"></div>
+  </div>
+
+  <script>
+    let midiAccess = null;
+    let output = null;
+
+    function populatePresets() {
+      const recallSelect = document.getElementById("recallSelect");
+      const saveSelect = document.getElementById("saveSelect");
+      for (let i = 1; i <= 122; i++) {
+        let option1 = document.createElement("option");
+        option1.value = i;
+        option1.text = i;
+        recallSelect.appendChild(option1);
+        let option2 = document.createElement("option");
+        option2.value = i;
+        option2.text = i;
+        saveSelect.appendChild(option2);
+      }
+    }
+
+    function log(msg) {
+      const logDiv = document.getElementById("log");
+      logDiv.innerHTML += msg + "<br>";
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    navigator.requestMIDIAccess().then(access => {
+      midiAccess = access;
+      const midiOut = document.getElementById("midiOut");
+      midiOut.innerHTML = "";
+      access.outputs.forEach((port, key) => {
+        const option = document.createElement("option");
+        option.text = port.name;
+        option.value = key;
+        midiOut.appendChild(option);
+      });
+      midiOut.addEventListener("change", () => {
+        const selected = [...midiAccess.outputs.values()][midiOut.selectedIndex];
+        output = selected;
+      });
+      output = [...midiAccess.outputs.values()][0];
+    });
+
+    function sendPC(preset) {
+      if (!output) return;
+      output.send([0xC1, parseInt(preset)]);
+      log(`Sent PC ${preset} on CH2`);
+    }
+
+    function sendPCAndSync(preset) {
+      sendPC(preset);
+      document.getElementById("recallSelect").value = preset;
+      document.getElementById("saveSelect").value = preset;
+    }
+
+    function syncSaveDropdown() {
+      document.getElementById("saveSelect").value = document.getElementById("recallSelect").value;
+    }
+
+    function sendCC(cc, value) {
+      if (!output) return;
+      output.send([0xB1, cc, value]);
+      log(`Sent CC ${cc} → ${value} on CH2`);
+    }
+
+    function sendGain(cc) {
+      const value = parseInt(document.getElementById("gain2").value);
+      sendCC(cc, value);
+    }
+
+    function sendLive() {
+      sendPC(0);
+    }
+
+    function savePreset() {
+      const slot = document.getElementById("saveSelect").value;
+      sendCC(111, parseInt(slot));
+      log(`Sent CC111 to save preset ${slot}`);
+    }
+
+    window.onload = populatePresets;
+  </script>
+</body>
+</html>
